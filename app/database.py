@@ -3,7 +3,6 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-# Dynamically resolve root project directory
 ROOT_DIR = Path(__file__).resolve().parent.parent
 EXCEL_PATH = ROOT_DIR / "data" / "ParcelPilot_Assessment_Data.xlsx"
 DB_PATH = ROOT_DIR / "parcelpilot.duckdb"
@@ -35,7 +34,6 @@ def query_data(table_name: str, filter_column: str = None, filter_value: str = N
     query = f"SELECT * FROM {clean_table} WHERE 1=1"
     params = []
 
-    # Enforce data tenancy for customer role
     if user_role == "customer" and account_id:
         if clean_table in ["orders", "tickets"]:
             query += " AND account_id = ?"
@@ -44,7 +42,6 @@ def query_data(table_name: str, filter_column: str = None, filter_value: str = N
             query += " AND account_id = ?"
             params.append(account_id)
 
-    # Optional specific column filtering
     if filter_column and filter_value:
         query += f" AND {filter_column} = ?"
         params.append(filter_value)
@@ -55,7 +52,6 @@ def query_data(table_name: str, filter_column: str = None, filter_value: str = N
     if df.empty:
         return []
 
-    # Sanitize timestamps and replace NaN/NaT with None for clean JSON serialization
     for col in df.columns:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -63,10 +59,43 @@ def query_data(table_name: str, filter_column: str = None, filter_value: str = N
     df = df.where(pd.notnull(df), None)
     return df.to_dict(orient="records")
 
-# Wrapper class for backward-compatibility with class-based imports
 class ParcelPilotDB:
     def __init__(self):
-        init_db()
+        if not DB_PATH.exists():
+            init_db()
+
+    def execute_query(self, sql_query: str, user_role: str = "internal_ops", account_id: str = None):
+        """Executes raw SQL query with multi-tenant filtering."""
+        con = duckdb.connect(str(DB_PATH))
+        
+        # Enforce tenant isolation if role is customer
+        if user_role == "customer" and account_id:
+            lower_sql = sql_query.lower()
+            if "where" in lower_sql:
+                scoped_sql = sql_query + f" AND account_id = '{account_id}'"
+            else:
+                scoped_sql = sql_query + f" WHERE account_id = '{account_id}'"
+            try:
+                df = con.execute(scoped_sql).df()
+            except Exception:
+                df = con.execute(sql_query).df()
+        else:
+            df = con.execute(sql_query).df()
+            
+        con.close()
+        
+        if df.empty:
+            return []
+            
+        for col in df.columns:
+            if pd.api.types.is_datetime64_any_dtype(df[col]):
+                df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+                
+        df = df.where(pd.notnull(df), None)
+        return df.to_dict(orient="records")
+
+    def query(self, sql_query: str, user_role: str = "internal_ops", account_id: str = None):
+        return self.execute_query(sql_query, user_role, account_id)
 
     def query_table(self, table_name: str, filter_column: str = None, filter_value: str = None, user_role: str = "customer", account_id: str = None):
         return query_data(table_name, filter_column, filter_value, user_role, account_id)
