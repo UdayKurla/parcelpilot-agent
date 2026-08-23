@@ -1,7 +1,9 @@
 import os
+import math
 from pathlib import Path
 import duckdb
 import pandas as pd
+import numpy as np
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 EXCEL_PATH = ROOT_DIR / "data" / "ParcelPilot_Assessment_Data.xlsx"
@@ -23,6 +25,13 @@ def init_db(excel_path: str = None):
 
     con.close()
 
+def _clean_record(val):
+    if pd.isna(val) or val is np.nan or (isinstance(val, float) and (math.isnan(val) or math.isinf(val))):
+        return None
+    if isinstance(val, (pd.Timestamp, pd.Timedelta)):
+        return str(val)
+    return val
+
 def query_data(table_name: str, filter_column: str = None, filter_value: str = None, user_role: str = "customer", account_id: str = None):
     """Queries DuckDB with strict multi-tenant scoping and JSON-safe sanitization."""
     if not DB_PATH.exists():
@@ -35,10 +44,7 @@ def query_data(table_name: str, filter_column: str = None, filter_value: str = N
     params = []
 
     if user_role == "customer" and account_id:
-        if clean_table in ["orders", "tickets"]:
-            query += " AND account_id = ?"
-            params.append(account_id)
-        elif clean_table == "accounts":
+        if clean_table in ["orders", "tickets", "accounts"]:
             query += " AND account_id = ?"
             params.append(account_id)
 
@@ -52,12 +58,11 @@ def query_data(table_name: str, filter_column: str = None, filter_value: str = N
     if df.empty:
         return []
 
-    for col in df.columns:
-        if pd.api.types.is_datetime64_any_dtype(df[col]):
-            df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+    cleaned_records = []
+    for row in df.to_dict(orient="records"):
+        cleaned_records.append({k: _clean_record(v) for k, v in row.items()})
 
-    df = df.where(pd.notnull(df), None)
-    return df.to_dict(orient="records")
+    return cleaned_records
 
 class ParcelPilotDB:
     def __init__(self):
@@ -65,10 +70,8 @@ class ParcelPilotDB:
             init_db()
 
     def execute_query(self, sql_query: str, user_role: str = "internal_ops", account_id: str = None):
-        """Executes raw SQL query with multi-tenant filtering."""
         con = duckdb.connect(str(DB_PATH))
         
-        # Enforce tenant isolation if role is customer
         if user_role == "customer" and account_id:
             lower_sql = sql_query.lower()
             if "where" in lower_sql:
@@ -87,12 +90,11 @@ class ParcelPilotDB:
         if df.empty:
             return []
             
-        for col in df.columns:
-            if pd.api.types.is_datetime64_any_dtype(df[col]):
-                df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
-                
-        df = df.where(pd.notnull(df), None)
-        return df.to_dict(orient="records")
+        cleaned_records = []
+        for row in df.to_dict(orient="records"):
+            cleaned_records.append({k: _clean_record(v) for k, v in row.items()})
+            
+        return cleaned_records
 
     def query(self, sql_query: str, user_role: str = "internal_ops", account_id: str = None):
         return self.execute_query(sql_query, user_role, account_id)
