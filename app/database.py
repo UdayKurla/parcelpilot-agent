@@ -1,30 +1,35 @@
 import os
+from pathlib import Path
 import duckdb
 import pandas as pd
 
-DB_PATH = "parcelpilot.duckdb"
+# Dynamically resolve root project directory
+ROOT_DIR = Path(__file__).resolve().parent.parent
+EXCEL_PATH = ROOT_DIR / "data" / "ParcelPilot_Assessment_Data.xlsx"
+DB_PATH = ROOT_DIR / "parcelpilot.duckdb"
 
-def init_db(excel_path: str = "data/ParcelPilot_Assessment_Data.xlsx"):
+def init_db(excel_path: str = None):
     """Loads all sheets from the assessment Excel file into DuckDB."""
-    if not os.path.exists(excel_path):
-        raise FileNotFoundError(f"Assessment dataset not found at {excel_path}")
+    target_excel = Path(excel_path) if excel_path else EXCEL_PATH
+    if not target_excel.exists():
+        raise FileNotFoundError(f"Assessment dataset not found at {target_excel}")
 
-    xls = pd.ExcelFile(excel_path)
-    con = duckdb.connect(DB_PATH)
+    xls = pd.ExcelFile(target_excel)
+    con = duckdb.connect(str(DB_PATH))
 
     for sheet in xls.sheet_names:
         clean_name = sheet.strip().lower().replace(" ", "_")
-        df = pd.read_excel(excel_path, sheet_name=sheet)
+        df = pd.read_excel(target_excel, sheet_name=sheet)
         con.execute(f"CREATE OR REPLACE TABLE {clean_name} AS SELECT * FROM df")
 
     con.close()
 
 def query_data(table_name: str, filter_column: str = None, filter_value: str = None, user_role: str = "customer", account_id: str = None):
     """Queries DuckDB with strict multi-tenant scoping and JSON-safe sanitization."""
-    if not os.path.exists(DB_PATH):
+    if not DB_PATH.exists():
         init_db()
 
-    con = duckdb.connect(DB_PATH)
+    con = duckdb.connect(str(DB_PATH))
     clean_table = table_name.strip().lower().replace(" ", "_")
 
     query = f"SELECT * FROM {clean_table} WHERE 1=1"
@@ -57,3 +62,11 @@ def query_data(table_name: str, filter_column: str = None, filter_value: str = N
 
     df = df.where(pd.notnull(df), None)
     return df.to_dict(orient="records")
+
+# Wrapper class for backward-compatibility with class-based imports
+class ParcelPilotDB:
+    def __init__(self):
+        init_db()
+
+    def query_table(self, table_name: str, filter_column: str = None, filter_value: str = None, user_role: str = "customer", account_id: str = None):
+        return query_data(table_name, filter_column, filter_value, user_role, account_id)
