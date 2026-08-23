@@ -142,5 +142,3 @@ Open `http://localhost:8501` in your browser.
 
 * **Scaffolding & Architecture**: Used LLM coding assistance for initial DuckDB schema loaders, multi-turn LangChain tool execution handlers, and Streamlit session state management.
 * **Validation**: Generated test edge cases to verify JSON parameter sanitation, NaN/null payload safety, and tenant data scoping.
-
-```
