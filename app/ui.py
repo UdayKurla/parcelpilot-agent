@@ -2,7 +2,7 @@ import sys
 import os
 from pathlib import Path
 
-# Add project root directory to sys.path
+# Add project root directory to sys.path so 'app.*' imports resolve on Streamlit Cloud
 root_dir = Path(__file__).resolve().parent.parent
 if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
@@ -14,11 +14,14 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from app.tools import search_documentation, query_operational_data, stage_ticket_action
 
-# Explicitly load .env
+# Explicitly load local .env if present
 env_path = root_dir / ".env"
 load_dotenv(dotenv_path=env_path, override=True)
 
+# Retrieve API key from environment or Streamlit Cloud secrets
 google_key = os.getenv("GOOGLE_API_KEY")
+if not google_key and hasattr(st, "secrets") and "GOOGLE_API_KEY" in st.secrets:
+    google_key = st.secrets["GOOGLE_API_KEY"]
 
 st.set_page_config(
     page_title="ParcelPilot Support & Ops AI Agent",
@@ -47,10 +50,10 @@ with st.sidebar:
     st.markdown("---")
     st.caption("📅 **Snapshot Reference Time**: `2026-08-16 11:00 IST`")
     st.caption("🔒 **Data Access**: Layer-enforced scoping")
-    st.caption("⚡ **LLM Engine**: Gemini 3.6 Flash")
+    st.caption("⚡ **LLM Engine**: Gemini Flash")
     
     if not google_key:
-        st.error("⚠️ GOOGLE_API_KEY not detected in .env!")
+        st.error("⚠️ GOOGLE_API_KEY not detected in .env or Streamlit Secrets!")
 
     if st.button("Clear Conversation History"):
         st.session_state.messages = []
@@ -77,7 +80,7 @@ tools_dict = {t.name: t for t in tools}
 
 if google_key:
     llm = ChatGoogleGenerativeAI(
-        model="gemini-3.6-flash",
+        model="gemini-1.5-flash",
         google_api_key=google_key
     )
     llm_with_tools = llm.bind_tools(tools)
@@ -116,7 +119,7 @@ for msg in st.session_state.messages:
 # User Chat Input
 if prompt_input := st.chat_input("Ask a question or request an action..."):
     if not google_key:
-        st.error("Please configure your GOOGLE_API_KEY in the .env file.")
+        st.error("Please configure your GOOGLE_API_KEY in the Streamlit secrets or .env file.")
         st.stop()
 
     st.session_state.messages.append({"role": "user", "content": prompt_input})
