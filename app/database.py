@@ -72,18 +72,26 @@ class ParcelPilotDB:
     def execute_query(self, sql_query: str, user_role: str = "internal_ops", account_id: str = None):
         con = duckdb.connect(str(DB_PATH))
         
-        if user_role == "customer" and account_id:
-            lower_sql = sql_query.lower()
-            if "where" in lower_sql:
-                scoped_sql = sql_query + f" AND account_id = '{account_id}'"
+        try:
+            # Enforce tenant isolation if role is customer
+            if user_role == "customer" and account_id:
+                lower_sql = sql_query.lower()
+                if "where" in lower_sql:
+                    scoped_sql = sql_query + f" AND account_id = '{account_id}'"
+                else:
+                    scoped_sql = sql_query + f" WHERE account_id = '{account_id}'"
+                
+                try:
+                    df = con.execute(scoped_sql).df()
+                except Exception:
+                    df = con.execute(sql_query).df()
             else:
-                scoped_sql = sql_query + f" WHERE account_id = '{account_id}'"
-            try:
-                df = con.execute(scoped_sql).df()
-            except Exception:
                 df = con.execute(sql_query).df()
-        else:
-            df = con.execute(sql_query).df()
+                
+        except Exception as e:
+            con.close()
+            # Return the error to the LLM so it can self-correct instead of crashing the app
+            return [{"error": f"SQL Execution Failed: {str(e)}. Tip: If a column is missing, query with LIMIT 1 to check the schema."}]
             
         con.close()
         
