@@ -80,7 +80,7 @@ tools_dict = {t.name: t for t in tools}
 
 if google_key:
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model="gemini-2.5-flash",
         google_api_key=google_key
     )
     llm_with_tools = llm.bind_tools(tools)
