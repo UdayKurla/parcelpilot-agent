@@ -121,10 +121,7 @@ Open `http://localhost:8501` in your browser.
 
 ---
 
-## 🤖 AI Tool Usage Disclosure
+## 🤖 AI Tool Usage
 
 - **Gemini Flash LLM**: Conversational reasoning loop, contextual parameter extraction, and structured tool selection.
 - **AI Coding Tools (VS Code & AI Assistants)**: Pipeline scaffolding, DuckDB query formatting, and Streamlit state synchronization.
-
-* **Scaffolding & Architecture**: Used LLM coding assistance for initial DuckDB schema loaders, multi-turn LangChain tool execution handlers, and Streamlit session state management.
-* **Validation**: Generated test edge cases to verify JSON parameter sanitation, NaN/null payload safety, and tenant data scoping.
